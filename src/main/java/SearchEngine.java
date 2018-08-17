@@ -1,52 +1,58 @@
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Scanner;
-import java.nio.file.Files;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class SearchEngine {
 
-    public static void main(String[] args) {
-        if (args.length == 0) {
-            throw new IllegalArgumentException("No directory given to index.");
-        }
+    private final static Logger logger = Logger.getLogger(SearchEngine.class.getName());
+    public static Set<String> desirableWords;
 
-        Path path = Paths.get(args[0]);
+    public static void process(String phrase, Path path) {
 
-        Scanner keyboard = new Scanner(System.in);
-
-        while (true) {
-            System.out.print("search> ");
-            final String line = keyboard.nextLine();
-            xx (line,path);
-        }
-    }
-
-    private static void xx (String line, Path path) {
+        HashMap<String,Float> fileResults = new HashMap<String,Float>();
+        ExecutorService service = Executors.newFixedThreadPool(2);
+        setPath(phrase);
 
         try {
-            DirectoryStream<Path> stream = Files.newDirectoryStream( path);
-            for (Path p : stream) {
-                countOfString(line,p);
+            DirectoryStream<Path> stream = Files.newDirectoryStream(path);
+            for (Path fileName : stream) {
+                Future<Float> result = service.submit( new SearchThread(fileName,desirableWords));
+                fileResults.put(fileName.getFileName().toString(), result.get());
+                }
+        } catch (IOException | InterruptedException | ExecutionException e) {
+            logger.log(Level.WARNING, e.getMessage());
+        }
+
+        showResults(fileResults);
+    }
+
+    private static void setPath(String phrase){
+        desirableWords  = new HashSet<>();
+        for (String str : phrase.split("\\W")) {
+            if (str.length() > 1) {
+                desirableWords.add(str);
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
-    private static void countOfString(String searchString, Path fileName) {
-        long count = 0;
-        try {
+    private static void showResults(HashMap<String,Float> fileResults){
 
-            System.out.println(fileName.getFileName().toString());
-            count = Files.lines(fileName)
-                    .filter(s -> s.contains(searchString))
-                    .count();
-        } catch (IOException e) {
-            e.printStackTrace();
+        List<Map.Entry> a = new ArrayList<Map.Entry>(fileResults.entrySet());
+        Collections.sort(a,
+                (Comparator) (o1, o2) -> {
+                    Map.Entry e1 = (Map.Entry) o1;
+                    Map.Entry e2 = (Map.Entry) o2;
+                    return ((Comparable) e2.getValue()).compareTo(e1.getValue());
+                });
+        for (Map.Entry e : a) {
+            System.out.println(e.getKey() + ": " + e.getValue() + "%") ;
         }
-
-        System.out.println(count);
     }
+
 }
